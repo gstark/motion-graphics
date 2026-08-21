@@ -385,6 +385,14 @@ final class AppModel: ObservableObject {
             ) { [weak self] in self?.handle($0) }
         }
 
+        // Save the transcript at the project root as a readable asset, next to
+        // source.mp4, so it can be inspected and evaluated later.
+        let rootTranscript = project.folder.appendingPathComponent("transcript.json")
+        if FileManager.default.fileExists(atPath: project.transcriptFile.path) {
+            try? FileManager.default.removeItem(at: rootTranscript)
+            try? FileManager.default.copyItem(at: project.transcriptFile, to: rootTranscript)
+        }
+
         // 5. Design the graphics. Subscription login when we have it.
         setStage("designing")
         var generateEnv: [String: String] = [:]

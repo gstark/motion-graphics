@@ -57,7 +57,7 @@ For each line and point covered in the video, add motion graphics to highlight w
 - Size: ${meta.width}x${meta.height} pixels, ${meta.fps} fps, ${meta.durationInSeconds.toFixed(1)} seconds.
 
 ## Transcript
-${JSON.stringify(transcript.segments, null, 1)}
+The transcript is in src/job/transcript.json: a JSON object with a "segments" array, each having text, start, and end (in seconds of video time). It has ${transcript.segments.length} segments. Read that file to time the graphics to what is said, rather than expecting it inline here.
 
 ## Finish
 When done, reply with one short sentence describing the design. The build is validated separately; you may be asked to fix errors.`
