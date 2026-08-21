@@ -19,6 +19,16 @@ struct ContentView: View {
         }
         .frame(minWidth: 640, minHeight: 520)
         .sheet(isPresented: $model.showPrompt) { PromptSheet() }
+        // The debug log is available on every screen, not just while working.
+        .safeAreaInset(edge: .bottom) {
+            if model.showDebug {
+                VStack(spacing: 0) {
+                    Divider()
+                    DebugConsole(debug: model.debug)
+                        .frame(height: 260)
+                }
+            }
+        }
         .overlay(alignment: .bottom) {
             if let progress = model.setupProgress {
                 Text(progress)
@@ -26,6 +36,23 @@ struct ContentView: View {
                     .padding(8)
                     .frame(maxWidth: .infinity)
                     .background(.thinMaterial)
+            }
+        }
+        .toolbar {
+            ToolbarItemGroup(placement: .automatic) {
+                Button {
+                    model.viewSystemPrompt()
+                } label: {
+                    Label("System prompt", systemImage: "text.alignleft")
+                }
+                .help("Show the system prompt for the current project")
+                .disabled(model.currentProject == nil)
+
+                Toggle(isOn: $model.showDebug) {
+                    Label("Debug", systemImage: "ladybug")
+                }
+                .toggleStyle(.button)
+                .help("Show everything the app is doing")
             }
         }
     }
@@ -308,23 +335,7 @@ struct WorkingView: View {
     @EnvironmentObject var model: AppModel
 
     var body: some View {
-        VStack(spacing: 0) {
-            statusArea
-            if model.showDebug {
-                Divider()
-                DebugConsole(debug: model.debug)
-                    .frame(maxHeight: .infinity)
-            }
-        }
-        .toolbar {
-            ToolbarItem(placement: .automatic) {
-                Toggle(isOn: $model.showDebug) {
-                    Label("Debug", systemImage: "ladybug")
-                }
-                .toggleStyle(.button)
-                .help("Show everything the app is doing")
-            }
-        }
+        statusArea
     }
 
     private var statusArea: some View {
@@ -396,11 +407,8 @@ struct DoneView: View {
             }
             .buttonStyle(.bordered)
             .controlSize(.large)
-            HStack(spacing: 18) {
-                Button("View system prompt") { model.viewSystemPrompt() }
-                Button("Back to projects") { model.backToProjects() }
-            }
-            .buttonStyle(.link)
+            Button("Back to projects") { model.backToProjects() }
+                .buttonStyle(.link)
         }
         .padding(40)
     }

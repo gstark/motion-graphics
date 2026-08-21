@@ -38,8 +38,14 @@ if (!printPrompt) {
 }
 
 const paths = jobPaths(jobDir)
-const meta = JSON.parse(fs.readFileSync(paths.metaFile, 'utf8'))
-const transcript = JSON.parse(fs.readFileSync(paths.transcriptFile, 'utf8'))
+// In print mode the job may not be prepared yet (no meta/transcript), so fall
+// back to placeholders instead of failing.
+const meta = fs.existsSync(paths.metaFile)
+  ? JSON.parse(fs.readFileSync(paths.metaFile, 'utf8'))
+  : { mode: '(not set yet)', width: 0, height: 0, fps: 0, durationInSeconds: 0 }
+const transcript = fs.existsSync(paths.transcriptFile)
+  ? JSON.parse(fs.readFileSync(paths.transcriptFile, 'utf8'))
+  : { segments: [] }
 
 const systemPrompt = `
 You are a motion-graphics designer. You design broadcast-quality animated graphics for a video, implemented as a Remotion React composition.
