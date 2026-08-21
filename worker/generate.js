@@ -2,38 +2,38 @@
 // user's direction, and has Claude write src/Graphics.tsx. Validates the
 // result and feeds errors back to the agent, up to MAX_ATTEMPTS times.
 //   node generate.js --job <dir> --direction "what the graphics should show"
-import {query} from '@anthropic-ai/claude-agent-sdk';
-import {execFile} from 'node:child_process';
-import fs from 'node:fs';
-import path from 'node:path';
-import {promisify} from 'node:util';
-import {arg, emit, fail, jobPaths, workerDir} from './lib.js';
+import { query } from '@anthropic-ai/claude-agent-sdk'
+import { execFile } from 'node:child_process'
+import fs from 'node:fs'
+import path from 'node:path'
+import { promisify } from 'node:util'
+import { arg, emit, fail, jobPaths, workerDir } from './lib.js'
 
-const execFileAsync = promisify(execFile);
+const execFileAsync = promisify(execFile)
 
-const MAX_ATTEMPTS = 3;
+const MAX_ATTEMPTS = 3
 
-const jobDir = arg('job');
-const direction = arg('direction') ?? '';
+const jobDir = arg('job')
+const direction = arg('direction') ?? ''
 // When set, this is a revision pass: keep the existing design and apply the
 // user's feedback rather than designing from scratch.
-const feedback = arg('feedback');
-if (!jobDir) fail('usage: generate.js --job <dir> --direction <text> [--feedback <text>]');
+const feedback = arg('feedback')
+if (!jobDir) fail('usage: generate.js --job <dir> --direction <text> [--feedback <text>]')
 
 // Auth: "subscription" uses the claude.ai login Claude Code stored; "apikey"
 // uses ANTHROPIC_API_KEY. Default follows whether a key is present.
-const authMode = arg('auth') ?? (process.env.ANTHROPIC_API_KEY ? 'apikey' : 'subscription');
+const authMode = arg('auth') ?? (process.env.ANTHROPIC_API_KEY ? 'apikey' : 'subscription')
 if (authMode === 'subscription') {
   // A stray ANTHROPIC_API_KEY would override the subscription login, so
   // clear it. The SDK then falls back to the stored OAuth token.
-  delete process.env.ANTHROPIC_API_KEY;
+  delete process.env.ANTHROPIC_API_KEY
 } else if (!process.env.ANTHROPIC_API_KEY) {
-  fail('ANTHROPIC_API_KEY is not set');
+  fail('ANTHROPIC_API_KEY is not set')
 }
 
-const paths = jobPaths(jobDir);
-const meta = JSON.parse(fs.readFileSync(paths.metaFile, 'utf8'));
-const transcript = JSON.parse(fs.readFileSync(paths.transcriptFile, 'utf8'));
+const paths = jobPaths(jobDir)
+const meta = JSON.parse(fs.readFileSync(paths.metaFile, 'utf8'))
+const transcript = JSON.parse(fs.readFileSync(paths.transcriptFile, 'utf8'))
 
 const modeNotes = {
   separate:
@@ -42,45 +42,28 @@ const modeNotes = {
     'The graphics render on their own opaque panel shown DIRECTLY BELOW the video. The viewer sees video on top and your panel underneath. Use the whole panel; it does not cover the video.',
   'video-bottom':
     'The graphics render on their own opaque panel shown DIRECTLY ABOVE the video. The viewer sees your panel on top and video underneath. Use the whole panel; it does not cover the video.',
-};
+}
 
-const systemPrompt = `You are a motion-graphics designer. You design broadcast-quality animated graphics for a video, implemented as a Remotion React composition.
+const systemPrompt = `
+You are a motion-graphics designer. You design broadcast-quality animated graphics for a video, implemented as a Remotion React composition.
 
 ## Your one job
-Write the file src/Graphics.tsx. Do not create or edit any other file. The scaffolding (composition registration, canvas size, fps, duration, rendering) already exists and must not change.
+For each line and point covered in the video, add motion graphics to highlight what he is saying. Double the height of the video and put the motion graphics on the top half.
 
 ## Canvas
 - Size: ${meta.width}x${meta.height} pixels, ${meta.fps} fps, ${meta.durationInSeconds.toFixed(1)} seconds.
 - Mode: ${meta.mode}. ${modeNotes[meta.mode]}
 
 ## Component library (import from './library')
-All times are in seconds of video time and match the transcript.
-- <Caption segments={transcript.segments} fontSize? bottom? /> — shows the active transcript phrase as a pill.
-- <TitleCard title subtitle? start end /> — big centered title.
-- <LowerThird title subtitle? start end bottom? left? /> — broadcast-style name bar.
-- <Callout text start end x y fontSize? maxWidth? /> — floating text box at a pixel position.
-- <Highlight start end x y width height /> — animated outline around a region (best in 'separate' mode).
-- <StatCounter value label start end x y prefix? suffix? decimals? /> — number that counts up.
-- <ListReveal items={string[]} start end x y fontSize? staggerSeconds? /> — staggered bullet list.
-- <ProgressBar y? height? start? end? /> — thin bar that fills over the video.
-- useTimed(startSec, endSec) — hook returning {visible, enter, exit, progress} springs, for custom elements.
-- defaultTheme — colors and font. Pass a modified copy via the theme prop to restyle.
 
-You can also write custom React/Remotion elements (useCurrentFrame, spring, interpolate, AbsoluteFill) when the library does not cover an idea. Inline styles only. No new imports from outside 'remotion', 'react', './library', './types', and './job/*.json'. For Remotion API details or animation technique, load the remotion-best-practices skill.
-
-## Design rules
-- Time every element to the transcript. Nothing should appear at a random moment.
-- Less is more: 1 to 2 elements on screen at once. Let elements breathe for at least 2 seconds.
-- Minimum font size 32px. Keep 60px margin from canvas edges.
-- Do not stack elements on the same screen region at the same time.
 
 ## Transcript
 ${JSON.stringify(transcript.segments, null, 1)}
 
 ## Finish
-When src/Graphics.tsx is written, reply with one short sentence describing the design. The build is validated separately; you may be asked to fix errors.`;
+When src/Graphics.tsx is written, reply with one short sentence describing the design. The build is validated separately; you may be asked to fix errors.`
 
-const runAgent = async (prompt) => {
+const runAgent = async prompt => {
   const stream = query({
     prompt,
     options: {
@@ -94,15 +77,15 @@ const runAgent = async (prompt) => {
       model: process.env.MG_MODEL || 'claude-sonnet-5',
       maxTurns: 40,
     },
-  });
+  })
   for await (const message of stream) {
     if (message.type === 'assistant') {
       for (const block of message.message.content) {
         if (block.type === 'text' && block.text.trim()) {
-          emit({type: 'status', stage: 'designing', text: block.text.trim().slice(0, 300)});
+          emit({ type: 'status', stage: 'designing', text: block.text.trim().slice(0, 300) })
         } else if (block.type === 'tool_use') {
           // Surface each tool call for the debug window.
-          emit({type: 'log', stage: 'designing', tool: block.name, text: summarizeTool(block)});
+          emit({ type: 'log', stage: 'designing', tool: block.name, text: summarizeTool(block) })
         }
       }
     } else if (message.type === 'user') {
@@ -110,57 +93,55 @@ const runAgent = async (prompt) => {
       for (const block of message.message.content ?? []) {
         if (block.type === 'tool_result') {
           const text = Array.isArray(block.content)
-            ? block.content.map((c) => (c.type === 'text' ? c.text : '')).join('')
-            : String(block.content ?? '');
-          if (text.trim()) emit({type: 'log', stage: 'designing', text: text.trim().slice(0, 2000)});
+            ? block.content.map(c => (c.type === 'text' ? c.text : '')).join('')
+            : String(block.content ?? '')
+          if (text.trim()) emit({ type: 'log', stage: 'designing', text: text.trim().slice(0, 2000) })
         }
       }
     } else if (message.type === 'result') {
       if (message.subtype !== 'success') {
-        throw new Error(`agent failed: ${message.subtype}`);
+        throw new Error(`agent failed: ${message.subtype}`)
       }
-      emit({type: 'status', stage: 'designing', costUSD: message.total_cost_usd});
+      emit({ type: 'status', stage: 'designing', costUSD: message.total_cost_usd })
     }
   }
-};
+}
 
-const summarizeTool = (block) => {
-  const i = block.input ?? {};
+const summarizeTool = block => {
+  const i = block.input ?? {}
   switch (block.name) {
     case 'Bash':
-      return `$ ${i.command ?? ''}`;
+      return `$ ${i.command ?? ''}`
     case 'Read':
-      return `read ${i.file_path ?? ''}`;
+      return `read ${i.file_path ?? ''}`
     case 'Write':
-      return `write ${i.file_path ?? ''}`;
+      return `write ${i.file_path ?? ''}`
     case 'Edit':
-      return `edit ${i.file_path ?? ''}`;
+      return `edit ${i.file_path ?? ''}`
     case 'Glob':
-      return `glob ${i.pattern ?? ''}`;
+      return `glob ${i.pattern ?? ''}`
     case 'Grep':
-      return `grep ${i.pattern ?? ''}`;
+      return `grep ${i.pattern ?? ''}`
     default:
-      return `${block.name} ${JSON.stringify(i).slice(0, 200)}`;
+      return `${block.name} ${JSON.stringify(i).slice(0, 200)}`
   }
-};
+}
 
 const validate = async () => {
   try {
-    const {stdout} = await execFileAsync(
-      process.execPath,
-      [path.join(workerDir, 'validate.js'), '--job', jobDir],
-      {maxBuffer: 1024 * 1024 * 16},
-    );
-    return JSON.parse(stdout.trim().split('\n').pop());
+    const { stdout } = await execFileAsync(process.execPath, [path.join(workerDir, 'validate.js'), '--job', jobDir], {
+      maxBuffer: 1024 * 1024 * 16,
+    })
+    return JSON.parse(stdout.trim().split('\n').pop())
   } catch (e) {
-    const lastLine = (e.stdout || '').trim().split('\n').pop();
+    const lastLine = (e.stdout || '').trim().split('\n').pop()
     try {
-      return JSON.parse(lastLine);
+      return JSON.parse(lastLine)
     } catch {
-      return {ok: false, error: String(e.stderr || e.message)};
+      return { ok: false, error: String(e.stderr || e.message) }
     }
   }
-};
+}
 
 let prompt = feedback
   ? `You already designed src/Graphics.tsx for this video. The user watched the result and wants changes.
@@ -175,41 +156,43 @@ ${direction || '(none given)'}`
   : `Design the motion graphics for this video now, following the system instructions.
 
 The user's direction:
-${direction || '(none given — design tasteful graphics that support the spoken content)'}`;
+${direction || '(none given — design tasteful graphics that support the spoken content)'}`
 
 for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
-  emit({type: 'stage', stage: 'designing', attempt});
+  emit({ type: 'stage', stage: 'designing', attempt })
   try {
-    await runAgent(prompt);
+    await runAgent(prompt)
   } catch (e) {
-    const message = String(e.message || e);
+    const message = String(e.message || e)
     if (/credit balance/i.test(message)) {
-      fail('Your Claude account has no API credits. Add credits at console.anthropic.com and try again.');
+      fail('Your Claude account has no API credits. Add credits at console.anthropic.com and try again.')
     }
     if (/usage limit|rate limit|429/i.test(message)) {
-      fail('Your Claude subscription has hit its usage limit. Wait for it to reset and try again.');
+      fail('Your Claude subscription has hit its usage limit. Wait for it to reset and try again.')
     }
     if (/not logged in|no.*credentials|unauthorized|401/i.test(message)) {
-      fail('Claude is not signed in. Open Terminal, run "claude", and sign in with your Claude account, then try again.');
+      fail(
+        'Claude is not signed in. Open Terminal, run "claude", and sign in with your Claude account, then try again.'
+      )
     }
     if (/authentication|invalid.*api.?key/i.test(message)) {
-      fail('Claude did not accept the API key. Check the key and try again.');
+      fail('Claude did not accept the API key. Check the key and try again.')
     }
-    fail(`the design step failed: ${message.slice(0, 500)}`);
+    fail(`the design step failed: ${message.slice(0, 500)}`)
   }
 
-  emit({type: 'stage', stage: 'checking', attempt});
-  const result = await validate();
+  emit({ type: 'stage', stage: 'checking', attempt })
+  const result = await validate()
   if (result.ok) {
-    emit({type: 'done', attempts: attempt});
-    process.exit(0);
+    emit({ type: 'done', attempts: attempt })
+    process.exit(0)
   }
 
-  emit({type: 'status', stage: 'checking', text: `attempt ${attempt} failed validation`});
+  emit({ type: 'status', stage: 'checking', text: `attempt ${attempt} failed validation` })
   prompt = `Your src/Graphics.tsx does not build. Fix it. Keep the design; change only what the error requires.
 
 Build error:
-${String(result.error).slice(0, 4000)}`;
+${String(result.error).slice(0, 4000)}`
 }
 
-fail(`could not produce a working Graphics.tsx after ${MAX_ATTEMPTS} attempts`);
+fail(`could not produce a working Graphics.tsx after ${MAX_ATTEMPTS} attempts`)
