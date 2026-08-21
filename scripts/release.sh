@@ -97,14 +97,26 @@ else
   echo "          --apple-id <your Apple ID> --team-id JBRC9C74U7 --password <app-specific-password>"
 fi
 
+app_notarized=0
 if [ "$NOTARIZE" = "1" ]; then
   echo "==> notarizing the app (this can take a few minutes)"
   ZIP=$(mktemp -d)/app.zip
   ditto -c -k --keepParent "$APP" "$ZIP"
-  xcrun notarytool submit "$ZIP" --keychain-profile "$NOTARY_PROFILE" --wait
+  # Best-effort: a locked login keychain can make notarytool fail to read the
+  # credential mid-build. Retry once, and never abort the build over it — the
+  # app stays signed either way. Run release.sh from an interactive shell (or
+  # switch to an App Store Connect API key) for reliable headless notarizing.
+  for attempt in 1 2; do
+    if xcrun notarytool submit "$ZIP" --keychain-profile "$NOTARY_PROFILE" --wait \
+       && xcrun stapler staple "$APP"; then
+      app_notarized=1
+      break
+    fi
+    echo "warn: app notarization attempt $attempt failed; retrying..."
+    sleep 5
+  done
   /bin/rm -f "$ZIP"
-  echo "==> stapling the app"
-  xcrun stapler staple "$APP"
+  [ "$app_notarized" = "1" ] || echo "warn: app not notarized (keychain locked?). Artifacts are signed but will warn on other Macs."
 fi
 
 # --- ZIP (the easy handoff) ----------------------------------------------
@@ -130,12 +142,8 @@ hdiutil create -volname "$VOLUME_NAME" -srcfolder "$STAGE" -ov -format UDZO "$DM
 codesign --force --sign "$IDENTITY" "$DMG"
 
 # Notarize and staple the DMG too, so the disk image itself opens without a
-# warning even before the app is copied out. This is best-effort: the app
-# inside is already notarized and stapled (so the ZIP and the copied-out app
-# are fine regardless), and the login keychain can lock during the earlier
-# multi-minute wait, which makes this second submission fail to read the
-# credential. Retry once, and never fail the whole build over it.
-if [ "$NOTARIZE" = "1" ]; then
+# warning even before the app is copied out. Best-effort, like the app step.
+if [ "$NOTARIZE" = "1" ] && [ "$app_notarized" = "1" ]; then
   echo "==> notarizing the DMG"
   dmg_notarized=0
   for attempt in 1 2; do
