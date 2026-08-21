@@ -32,6 +32,10 @@ final class AppModel: ObservableObject {
     @Published var signInError: String?
     private var loginProcess: Process?
 
+    // System-prompt viewer.
+    @Published var promptText: String?
+    @Published var showPrompt = false
+
     init() {
         if ClaudeAuth.isConfigured {
             screen = .projects
@@ -81,6 +85,44 @@ final class AppModel: ObservableObject {
         loginProcess?.terminate()
         loginProcess = nil
         signingIn = false
+    }
+
+    // Shows the exact system prompt and first user message for the open
+    // project, built by generate.js so the app never drifts from it.
+    func viewSystemPrompt() {
+        guard let project = currentProject else { return }
+        promptText = "Loading…"
+        showPrompt = true
+        Task {
+            let text = await captureText(
+                Config.node,
+                arguments: [
+                    Config.workerDir.appendingPathComponent("generate.js").path,
+                    "--job", project.folder.path,
+                    "--direction", direction,
+                    "--print-prompt",
+                ],
+                cwd: Config.workerDir
+            )
+            promptText = text.isEmpty ? "Could not build the prompt." : text
+        }
+    }
+
+    private func captureText(_ executable: URL, arguments: [String], cwd: URL) async -> String {
+        await withCheckedContinuation { continuation in
+            let process = Process()
+            process.executableURL = executable
+            process.arguments = arguments
+            process.currentDirectoryURL = cwd
+            let out = Pipe()
+            process.standardOutput = out
+            process.standardError = Pipe()
+            process.terminationHandler = { _ in
+                let data = out.fileHandleForReading.readDataToEndOfFile()
+                continuation.resume(returning: String(decoding: data, as: UTF8.self))
+            }
+            do { try process.run() } catch { continuation.resume(returning: "") }
+        }
     }
 
     private func runLogin(_ claude: URL) async -> Bool {

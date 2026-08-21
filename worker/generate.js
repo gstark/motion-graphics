@@ -20,29 +20,26 @@ const direction = arg('direction') ?? ''
 const feedback = arg('feedback')
 if (!jobDir) fail('usage: generate.js --job <dir> --direction <text> [--feedback <text>]')
 
+// --print-prompt builds and prints the exact prompts for this job, then
+// exits without running the agent. Used by the app's prompt viewer.
+const printPrompt = process.argv.includes('--print-prompt')
+
 // Auth: "subscription" uses the claude.ai login Claude Code stored; "apikey"
 // uses ANTHROPIC_API_KEY. Default follows whether a key is present.
-const authMode = arg('auth') ?? (process.env.ANTHROPIC_API_KEY ? 'apikey' : 'subscription')
-if (authMode === 'subscription') {
-  // A stray ANTHROPIC_API_KEY would override the subscription login, so
-  // clear it. The SDK then falls back to the stored OAuth token.
-  delete process.env.ANTHROPIC_API_KEY
-} else if (!process.env.ANTHROPIC_API_KEY) {
-  fail('ANTHROPIC_API_KEY is not set')
+if (!printPrompt) {
+  const authMode = arg('auth') ?? (process.env.ANTHROPIC_API_KEY ? 'apikey' : 'subscription')
+  if (authMode === 'subscription') {
+    // A stray ANTHROPIC_API_KEY would override the subscription login, so
+    // clear it. The SDK then falls back to the stored OAuth token.
+    delete process.env.ANTHROPIC_API_KEY
+  } else if (!process.env.ANTHROPIC_API_KEY) {
+    fail('ANTHROPIC_API_KEY is not set')
+  }
 }
 
 const paths = jobPaths(jobDir)
 const meta = JSON.parse(fs.readFileSync(paths.metaFile, 'utf8'))
 const transcript = JSON.parse(fs.readFileSync(paths.transcriptFile, 'utf8'))
-
-const modeNotes = {
-  separate:
-    'The graphics render on a TRANSPARENT canvas that is placed directly ON TOP of the video. Leave the important areas of the frame visible. Prefer edges, lower thirds, callouts, and highlights.',
-  'video-top':
-    'The graphics render on their own opaque panel shown DIRECTLY BELOW the video. The viewer sees video on top and your panel underneath. Use the whole panel; it does not cover the video.',
-  'video-bottom':
-    'The graphics render on their own opaque panel shown DIRECTLY ABOVE the video. The viewer sees your panel on top and video underneath. Use the whole panel; it does not cover the video.',
-}
 
 const systemPrompt = `
 You are a motion-graphics designer. You design broadcast-quality animated graphics for a video, implemented as a Remotion React composition.
@@ -52,16 +49,12 @@ For each line and point covered in the video, add motion graphics to highlight w
 
 ## Canvas
 - Size: ${meta.width}x${meta.height} pixels, ${meta.fps} fps, ${meta.durationInSeconds.toFixed(1)} seconds.
-- Mode: ${meta.mode}. ${modeNotes[meta.mode]}
-
-## Component library (import from './library')
-
 
 ## Transcript
 ${JSON.stringify(transcript.segments, null, 1)}
 
 ## Finish
-When src/Graphics.tsx is written, reply with one short sentence describing the design. The build is validated separately; you may be asked to fix errors.`
+When done, reply with one short sentence describing the design. The build is validated separately; you may be asked to fix errors.`
 
 const runAgent = async prompt => {
   const stream = query({
@@ -157,6 +150,13 @@ ${direction || '(none given)'}`
 
 The user's direction:
 ${direction || '(none given — design tasteful graphics that support the spoken content)'}`
+
+if (printPrompt) {
+  process.stdout.write(
+    `=== SYSTEM PROMPT ===\n${systemPrompt}\n\n=== FIRST USER MESSAGE ===\n${prompt}\n`
+  )
+  process.exit(0)
+}
 
 for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
   emit({ type: 'stage', stage: 'designing', attempt })

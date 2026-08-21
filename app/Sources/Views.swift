@@ -18,6 +18,7 @@ struct ContentView: View {
             }
         }
         .frame(minWidth: 640, minHeight: 520)
+        .sheet(isPresented: $model.showPrompt) { PromptSheet() }
         .overlay(alignment: .bottom) {
             if let progress = model.setupProgress {
                 Text(progress)
@@ -395,10 +396,44 @@ struct DoneView: View {
             }
             .buttonStyle(.bordered)
             .controlSize(.large)
-            Button("Back to projects") { model.backToProjects() }
-                .buttonStyle(.link)
+            HStack(spacing: 18) {
+                Button("View system prompt") { model.viewSystemPrompt() }
+                Button("Back to projects") { model.backToProjects() }
+            }
+            .buttonStyle(.link)
         }
         .padding(40)
+    }
+}
+
+// Read-only viewer for the exact system prompt, in a fixed-width font.
+struct PromptSheet: View {
+    @EnvironmentObject var model: AppModel
+
+    var body: some View {
+        VStack(spacing: 0) {
+            HStack {
+                Text("System prompt").font(.headline)
+                Spacer()
+                Button("Copy") {
+                    NSPasteboard.general.clearContents()
+                    NSPasteboard.general.setString(model.promptText ?? "", forType: .string)
+                }
+                Button("Done") { model.showPrompt = false }
+                    .keyboardShortcut(.defaultAction)
+            }
+            .padding(14)
+            Divider()
+            ScrollView {
+                Text(model.promptText ?? "")
+                    .font(.system(size: 12, design: .monospaced))
+                    .textSelection(.enabled)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(16)
+            }
+            .background(Color(nsColor: .textBackgroundColor))
+        }
+        .frame(width: 720, height: 560)
     }
 }
 
