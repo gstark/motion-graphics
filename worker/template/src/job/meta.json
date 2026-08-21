@@ -1,0 +1,8 @@
+{
+  "mode": "separate",
+  "width": 1920,
+  "height": 1080,
+  "fps": 30,
+  "durationInSeconds": 10,
+  "sourceFileName": "source.mp4"
+}

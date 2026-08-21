@@ -1,0 +1,34 @@
+# Secrets / local config
+mise.local.toml
+.env
+.env.*
+.claude/settings.local.json
+
+# macOS
+.DS_Store
+
+# Node
+node_modules/
+npm-debug.log*
+
+# Tuist / Xcode (generated)
+*.xcodeproj
+*.xcworkspace
+Derived/
+.build/
+xcuserdata/
+
+# Build output and bundled runtimes
+build/
+dist/
+bin/
+.runtime-cache/
+app/Resources/bin/
+app/Resources/worker/
+
+# Job working directories
+jobs/
+
+# Regenerable icon previews (source of truth is icon/icon.svg)
+icon/contact.png
+icon/preview-*.png
