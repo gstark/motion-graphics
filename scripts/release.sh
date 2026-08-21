@@ -130,13 +130,31 @@ hdiutil create -volname "$VOLUME_NAME" -srcfolder "$STAGE" -ov -format UDZO "$DM
 codesign --force --sign "$IDENTITY" "$DMG"
 
 # Notarize and staple the DMG too, so the disk image itself opens without a
-# warning even before the app is copied out.
+# warning even before the app is copied out. This is best-effort: the app
+# inside is already notarized and stapled (so the ZIP and the copied-out app
+# are fine regardless), and the login keychain can lock during the earlier
+# multi-minute wait, which makes this second submission fail to read the
+# credential. Retry once, and never fail the whole build over it.
 if [ "$NOTARIZE" = "1" ]; then
   echo "==> notarizing the DMG"
-  xcrun notarytool submit "$DMG" --keychain-profile "$NOTARY_PROFILE" --wait
-  xcrun stapler staple "$DMG"
-  echo "==> verifying Gatekeeper acceptance"
-  spctl -a -t open --context context:primary-signature -vv "$DMG" || true
+  dmg_notarized=0
+  for attempt in 1 2; do
+    if xcrun notarytool submit "$DMG" --keychain-profile "$NOTARY_PROFILE" --wait \
+       && xcrun stapler staple "$DMG"; then
+      dmg_notarized=1
+      break
+    fi
+    echo "warn: DMG notarization attempt $attempt failed; retrying..."
+    sleep 5
+  done
+  if [ "$dmg_notarized" = "1" ]; then
+    echo "==> verifying Gatekeeper acceptance"
+    spctl -a -t open --context context:primary-signature -vv "$DMG" || true
+  else
+    echo "warn: could not notarize the DMG. The ZIP is fully notarized and is"
+    echo "      the recommended handoff. If the DMG matters, re-run the script;"
+    echo "      the keychain may have locked during the app-notarization wait."
+  fi
 fi
 
 echo "==> done"

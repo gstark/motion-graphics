@@ -189,21 +189,25 @@ struct PickVideoView: View {
 
 struct DirectionView: View {
     @EnvironmentObject var model: AppModel
+    @FocusState private var editorFocused: Bool
 
     var body: some View {
         VStack(alignment: .leading, spacing: 24) {
-            Text("What should the graphics show?")
+            Text("Any special instructions?")
                 .font(.largeTitle.bold())
-            Text("Describe it the way you would to a designer. For example: \"Show the three main points as they come up, with a title at the start.\"")
+            Text("Optional. Describe the style or anything you want, the way you would to a designer. For example: \"Bold captions, keep it minimal, brand color is teal.\" Leave it blank to let the agent decide.")
                 .foregroundStyle(.secondary)
 
             TextEditor(text: $model.direction)
                 .font(.title3)
+                .focused($editorFocused)
                 .scrollContentBackground(.hidden)
                 .padding(10)
                 .frame(minHeight: 120)
                 .background(RoundedRectangle(cornerRadius: 10).fill(Color(nsColor: .textBackgroundColor)))
                 .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(Color.secondary.opacity(0.3)))
+
+            DictateButton { startDictation(focus: $editorFocused) }
 
             Text("How should it look?")
                 .font(.title2.bold())
@@ -223,6 +227,34 @@ struct DirectionView: View {
             }
         }
         .padding(40)
+    }
+}
+
+// Focuses a text editor, then triggers macOS dictation on it. Dictation
+// attaches to the first responder, so focus has to land first.
+@MainActor
+func startDictation(focus: FocusState<Bool>.Binding) {
+    focus.wrappedValue = true
+    DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+        NSApp.sendAction(Selector(("startDictation:")), to: nil, from: nil)
+    }
+}
+
+// A "Dictate" button plus the keyboard hint, reused by any text screen.
+struct DictateButton: View {
+    var onStart: () -> Void
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Button(action: onStart) {
+                Label("Dictate", systemImage: "mic.fill")
+            }
+            .buttonStyle(.bordered)
+            .controlSize(.large)
+            Text("or press the microphone key, or fn twice.")
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+        }
     }
 }
 
@@ -375,15 +407,6 @@ struct FeedbackView: View {
     @FocusState private var editorFocused: Bool
     let url: URL
 
-    private func startDictation() {
-        // Dictation attaches to the first responder, so focus the editor
-        // first, then trigger the system dictation action down the chain.
-        editorFocused = true
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
-            NSApp.sendAction(Selector(("startDictation:")), to: nil, from: nil)
-        }
-    }
-
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
             Button {
@@ -407,16 +430,7 @@ struct FeedbackView: View {
                 .background(RoundedRectangle(cornerRadius: 10).fill(Color(nsColor: .textBackgroundColor)))
                 .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(Color.secondary.opacity(0.3)))
 
-            HStack(spacing: 10) {
-                Button(action: startDictation) {
-                    Label("Dictate", systemImage: "mic.fill")
-                }
-                .buttonStyle(.bordered)
-                .controlSize(.large)
-                Text("or press the microphone key, or fn twice.")
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
-            }
+            DictateButton { startDictation(focus: $editorFocused) }
 
             HStack {
                 Spacer()
