@@ -27,6 +27,11 @@ final class AppModel: ObservableObject {
     let debug = DebugLog()
     @Published var showDebug = false
 
+    // In-app Claude sign-in state.
+    @Published var signingIn = false
+    @Published var signInError: String?
+    private var loginProcess: Process?
+
     init() {
         if ClaudeAuth.isConfigured {
             screen = .projects
@@ -47,6 +52,55 @@ final class AppModel: ObservableObject {
         ClaudeAuth.assumeSubscription = true
         refreshProjects()
         screen = .projects
+    }
+
+    // Signs into a Claude subscription using the bundled Claude binary, which
+    // opens the browser. No separate CLI install. Proceeds when it succeeds.
+    func signInToClaude() {
+        guard let claude = Config.claudeBinary else {
+            signInError = "The sign-in tool is still being set up. Wait a moment and try again."
+            return
+        }
+        signInError = nil
+        signingIn = true
+        Task {
+            let ok = await runLogin(claude)
+            signingIn = false
+            loginProcess = nil
+            if ok || ClaudeAuth.hasSubscriptionLogin {
+                ClaudeAuth.assumeSubscription = true
+                refreshProjects()
+                screen = .projects
+            } else {
+                signInError = "Sign-in did not finish. Try again, and complete the page that opens in your browser."
+            }
+        }
+    }
+
+    func cancelSignIn() {
+        loginProcess?.terminate()
+        loginProcess = nil
+        signingIn = false
+    }
+
+    private func runLogin(_ claude: URL) async -> Bool {
+        await withCheckedContinuation { continuation in
+            let process = Process()
+            process.executableURL = claude
+            process.arguments = ["auth", "login", "--claudeai"]
+            process.environment = ProcessInfo.processInfo.environment
+            process.standardOutput = Pipe()
+            process.standardError = Pipe()
+            process.terminationHandler = { proc in
+                continuation.resume(returning: proc.terminationStatus == 0)
+            }
+            do {
+                try process.run()
+                loginProcess = process
+            } catch {
+                continuation.resume(returning: false)
+            }
+        }
     }
 
     func saveAPIKey() {

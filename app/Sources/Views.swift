@@ -53,17 +53,34 @@ struct SetupView: View {
                 Button("Continue") { model.continueWithSubscription() }
                     .buttonStyle(.borderedProminent)
                     .controlSize(.large)
-            } else {
-                Text("Sign in to Claude to design your graphics.")
-                    .multilineTextAlignment(.center)
-                    .foregroundStyle(.secondary)
-                Text("Open Terminal, run **claude**, and sign in with your Claude account. Then click below.")
+            } else if model.signingIn {
+                ProgressView()
+                    .controlSize(.large)
+                Text("Finish signing in in your browser")
+                    .font(.title3)
+                Text("A page opened in your browser. Sign in with your Claude account, then come back here.")
                     .multilineTextAlignment(.center)
                     .foregroundStyle(.secondary)
                     .frame(maxWidth: 420)
-                Button("I've signed in") { model.continueWithSubscription() }
+                Button("Cancel") { model.cancelSignIn() }
+            } else {
+                Text("Sign in with your Claude subscription to design your graphics.")
+                    .multilineTextAlignment(.center)
+                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: 420)
+                Button("Sign in to Claude") { model.signInToClaude() }
                     .buttonStyle(.borderedProminent)
                     .controlSize(.large)
+
+                if let error = model.signInError {
+                    Text(error)
+                        .font(.callout)
+                        .foregroundStyle(.orange)
+                        .multilineTextAlignment(.center)
+                        .frame(maxWidth: 420)
+                    Button("I've already signed in") { model.continueWithSubscription() }
+                        .buttonStyle(.link)
+                }
 
                 Button(showKeyField ? "Hide API key option" : "Use an API key instead") {
                     showKeyField.toggle()

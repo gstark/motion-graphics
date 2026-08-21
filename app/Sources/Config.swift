@@ -79,6 +79,19 @@ enum Config {
         return FileManager.default.fileExists(atPath: worker.appendingPathComponent("render.js").path) ? worker : nil
     }
 
+    // The full Claude Code binary the Agent SDK bundles. We use it both to
+    // run the agent and to drive "Sign in to Claude" in the app, so the user
+    // never installs the CLI themselves.
+    static var claudeBinary: URL? {
+        let base = workerDir.appendingPathComponent("node_modules/@anthropic-ai")
+        guard let entries = try? FileManager.default.contentsOfDirectory(atPath: base.path) else { return nil }
+        for entry in entries where entry.hasPrefix("claude-agent-sdk-darwin-") {
+            let bin = base.appendingPathComponent(entry).appendingPathComponent("claude")
+            if FileManager.default.isExecutableFile(atPath: bin.path) { return bin }
+        }
+        return nil
+    }
+
     static var outputDir: URL {
         let movies = FileManager.default.urls(for: .moviesDirectory, in: .userDomainMask)[0]
             .appendingPathComponent("Motion Graphics")
