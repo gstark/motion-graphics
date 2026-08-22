@@ -51,7 +51,10 @@ const systemPrompt = `
 You are a motion-graphics designer. You design broadcast-quality animated graphics for a video, implemented as a Remotion React composition.
 
 ## Your one job
-For each line and point covered in the video, add motion graphics to highlight what he is saying. Double the height of the video and put the motion graphics on the top half.
+For each line and point covered in the video, add motion graphics to highlight what is said.
+
+## No subtitles
+Do not render subtitles, captions, or a running text track of the spoken words. Use the transcript only for timing and for pulling out key words, phrases, numbers, or names worth highlighting as graphics.
 
 ## Canvas
 - Size: ${meta.width}x${meta.height} pixels, ${meta.fps} fps, ${meta.durationInSeconds.toFixed(1)} seconds.
@@ -73,7 +76,7 @@ const runAgent = async prompt => {
       // The template ships the official Remotion skills (.claude/skills).
       settingSources: ['project'],
       skills: 'all',
-      model: process.env.MG_MODEL || 'claude-sonnet-5',
+      model: process.env.MG_MODEL || 'claude-fable-5',
       maxTurns: 40,
     },
   })
@@ -158,9 +161,7 @@ The user's direction:
 ${direction || '(none given — design tasteful graphics that support the spoken content)'}`
 
 if (printPrompt) {
-  process.stdout.write(
-    `=== SYSTEM PROMPT ===\n${systemPrompt}\n\n=== FIRST USER MESSAGE ===\n${prompt}\n`
-  )
+  process.stdout.write(`=== SYSTEM PROMPT ===\n${systemPrompt}\n\n=== FIRST USER MESSAGE ===\n${prompt}\n`)
   process.exit(0)
 }
 
