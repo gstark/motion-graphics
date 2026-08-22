@@ -10,8 +10,6 @@ enum Config {
         return url
     }()
 
-    static var jobsDir: URL { appSupport.appendingPathComponent("jobs") }
-
     // Development checkout, used when the app runs without bundled resources.
     static let devRoot = URL(fileURLWithPath: "/Users/gstark/dev/personal/motion-graphics")
 
@@ -90,12 +88,5 @@ enum Config {
             if FileManager.default.isExecutableFile(atPath: bin.path) { return bin }
         }
         return nil
-    }
-
-    static var outputDir: URL {
-        let movies = FileManager.default.urls(for: .moviesDirectory, in: .userDomainMask)[0]
-            .appendingPathComponent("Motion Graphics")
-        try? FileManager.default.createDirectory(at: movies, withIntermediateDirectories: true)
-        return movies
     }
 }

@@ -220,11 +220,13 @@ struct DirectionView: View {
     @FocusState private var editorFocused: Bool
 
     var body: some View {
+        ScrollView {
         VStack(alignment: .leading, spacing: 24) {
             Text("Any special instructions?")
                 .font(.largeTitle.bold())
             Text("Optional. Describe the style or anything you want, the way you would to a designer. For example: \"Bold captions, keep it minimal, brand color is teal.\" Leave it blank to let the agent decide.")
                 .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
 
             TextEditor(text: $model.direction)
                 .font(.title3)
@@ -255,6 +257,7 @@ struct DirectionView: View {
             }
         }
         .padding(40)
+        }
     }
 }
 
@@ -299,6 +302,7 @@ struct ModeCard: View {
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
+                .fixedSize(horizontal: false, vertical: true)
         }
         .padding(14)
         .frame(maxWidth: .infinity)
