@@ -15,8 +15,8 @@ notarizes and staples automatically.
 
    ```sh
    xcrun notarytool store-credentials MG_NOTARY \
-     --apple-id gavin@gstark.com \
-     --team-id JBRC9C74U7 \
+     --apple-id <your-apple-id-email> \
+     --team-id <your-team-id> \
      --password <the-app-specific-password>
    ```
 

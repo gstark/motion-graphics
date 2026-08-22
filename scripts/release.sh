@@ -94,7 +94,7 @@ else
   echo "      The app is signed but other Macs will warn on first open."
   echo "      One-time setup (see scripts/notarize-setup.md):"
   echo "        xcrun notarytool store-credentials $NOTARY_PROFILE \\"
-  echo "          --apple-id <your Apple ID> --team-id JBRC9C74U7 --password <app-specific-password>"
+  echo "          --apple-id <your Apple ID> --team-id <your team ID> --password <app-specific-password>"
 fi
 
 app_notarized=0
@@ -130,6 +130,15 @@ mkdir -p "$DIST"
 ditto -c -k --keepParent "$APP" "$ZIP_OUT"
 
 # --- DMG ------------------------------------------------------------------
+# CI sets MG_SKIP_DMG=1: the zip is the distributable, and the DMG would
+# cost a second large notarization upload.
+if [ "${MG_SKIP_DMG:-0}" = "1" ]; then
+  echo "==> skipping DMG (MG_SKIP_DMG=1)"
+  echo "==> done"
+  ls -lh "$ZIP_OUT"
+  exit 0
+fi
+
 echo "==> building DMG"
 mkdir -p "$DIST"
 STAGE=$(mktemp -d)

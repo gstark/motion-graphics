@@ -1,0 +1,92 @@
+name: Release
+
+# Builds, signs, notarizes, and publishes MotionGraphics.zip.
+# Runs on version tags (v*) and on manual dispatch.
+#
+# Required repository secrets (see scripts/ci-setup.md):
+#   MACOS_CERT_P12_BASE64   Developer ID Application cert + key, base64 .p12
+#   MACOS_CERT_PASSWORD     password of that .p12
+#   APPLE_ID                Apple ID email for notarization
+#   APPLE_TEAM_ID           Apple developer team ID
+#   APPLE_APP_PASSWORD      app-specific password for notarytool
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+jobs:
+  release:
+    runs-on: macos-26
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Select Xcode 26
+        run: sudo xcode-select -s "$(ls -d /Applications/Xcode_26*.app | sort -V | tail -1)"
+
+      - name: Install tuist (mise)
+        uses: jdx/mise-action@v2
+
+      - name: Cache downloaded runtimes
+        uses: actions/cache@v4
+        with:
+          path: .runtime-cache
+          key: runtimes-${{ runner.os }}-${{ hashFiles('scripts/bundle-runtimes.sh') }}
+
+      - name: Install worker dependencies and headless browser
+        working-directory: worker
+        run: |
+          npm ci
+          node setup.js
+
+      - name: Import signing certificate
+        env:
+          CERT_P12_BASE64: ${{ secrets.MACOS_CERT_P12_BASE64 }}
+          CERT_PASSWORD: ${{ secrets.MACOS_CERT_PASSWORD }}
+        run: |
+          KEYCHAIN="$RUNNER_TEMP/build.keychain-db"
+          KEYCHAIN_PASSWORD="$(uuidgen)"
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+          security default-keychain -s "$KEYCHAIN"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN"
+          echo "$CERT_P12_BASE64" | base64 -d > "$RUNNER_TEMP/cert.p12"
+          security import "$RUNNER_TEMP/cert.p12" -k "$KEYCHAIN" \
+            -P "$CERT_PASSWORD" -T /usr/bin/codesign
+          /bin/rm "$RUNNER_TEMP/cert.p12"
+          security set-key-partition-list -S "apple-tool:,apple:,codesign:" \
+            -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+          security find-identity -v -p codesigning "$KEYCHAIN"
+
+      - name: Store notarization credential
+        env:
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
+        run: |
+          xcrun notarytool store-credentials MG_NOTARY \
+            --apple-id "$APPLE_ID" \
+            --team-id "$APPLE_TEAM_ID" \
+            --password "$APPLE_APP_PASSWORD"
+
+      - name: Build, sign, notarize
+        run: MG_SKIP_DMG=1 scripts/release.sh
+
+      - name: Verify Gatekeeper acceptance
+        run: |
+          spctl -a -vv build/Build/Products/Release/MotionGraphics.app
+
+      - name: Publish release (tag builds)
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/MotionGraphics.zip
+
+      - name: Upload artifact (manual runs)
+        if: github.event_name == 'workflow_dispatch'
+        uses: actions/upload-artifact@v4
+        with:
+          name: MotionGraphics
+          path: dist/MotionGraphics.zip
+          compression-level: 0
