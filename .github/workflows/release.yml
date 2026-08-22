@@ -74,6 +74,8 @@ jobs:
             --password "$APPLE_APP_PASSWORD"
 
       - name: Build, sign, notarize
+        env:
+          MG_VERSION: ${{ github.ref_type == 'tag' && github.ref_name || '' }}
         run: MG_SKIP_DMG=1 scripts/release.sh
 
       - name: Verify Gatekeeper acceptance

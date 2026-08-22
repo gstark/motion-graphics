@@ -84,7 +84,8 @@ enum Relocator {
         try? FileManager.default.trashItem(at: zip, resultingItemURL: nil)
     }
 
-    private static func relaunch(at dst: URL) {
+    // Also used by Updater after swapping the bundle.
+    static func relaunch(at dst: URL) {
         let config = NSWorkspace.OpenConfiguration()
         config.createsNewApplicationInstance = true
         NSWorkspace.shared.openApplication(at: dst, configuration: config) { _, _ in
@@ -92,7 +93,7 @@ enum Relocator {
         }
     }
 
-    private static func runAppleScript(_ source: String) -> Bool {
+    static func runAppleScript(_ source: String) -> Bool {
         var error: NSDictionary?
         NSAppleScript(source: source)?.executeAndReturnError(&error)
         return error == nil

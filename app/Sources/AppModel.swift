@@ -19,6 +19,10 @@ final class AppModel: ObservableObject {
     @Published var apiKeyDraft = ""
     @Published var setupProgress: String?
 
+    // Self-update: set when GitHub has a newer release.
+    @Published var availableUpdate: Updater.AvailableUpdate?
+    @Published var updateProgress: String?
+
     // Revision request typed on the feedback screen.
     @Published var feedbackText = ""
 
@@ -41,6 +45,27 @@ final class AppModel: ObservableObject {
         }
         refreshProjects()
         Task { await prepareWorkerQuietly() }
+        Task { availableUpdate = await Updater.check() }
+    }
+
+    // MARK: - Self-update
+
+    func installUpdate() {
+        guard let update = availableUpdate, updateProgress == nil else { return }
+        Task {
+            do {
+                try await Updater.install(update) { [weak self] text in
+                    Task { @MainActor in self?.updateProgress = text }
+                }
+            } catch {
+                updateProgress = nil
+                debug.log(.error, "update failed: \(error.localizedDescription)")
+                let alert = NSAlert()
+                alert.messageText = "The update could not be installed"
+                alert.informativeText = error.localizedDescription
+                alert.runModal()
+            }
+        }
     }
 
     // MARK: - Auth

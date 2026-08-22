@@ -35,6 +35,13 @@ if [ ! -f "$ROOT/app/Resources/bin/node" ]; then
   "$ROOT/scripts/bundle-runtimes.sh"
 fi
 
+# Stamp the app version from the tag so the in-app updater can compare
+# against GitHub releases. MG_VERSION overrides; otherwise the newest tag.
+MG_VERSION="${MG_VERSION:-$(git -C "$ROOT" describe --tags --abbrev=0 2>/dev/null || true)}"
+MG_VERSION="${MG_VERSION#v}"
+export TUIST_MG_VERSION="${MG_VERSION:-0.0.0}"
+echo "==> version $TUIST_MG_VERSION"
+
 echo "==> building Release"
 cd "$ROOT"
 tuist generate --no-open >/dev/null

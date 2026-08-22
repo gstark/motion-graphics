@@ -30,7 +30,7 @@ struct ContentView: View {
             }
         }
         .overlay(alignment: .bottom) {
-            if let progress = model.setupProgress {
+            if let progress = model.updateProgress ?? model.setupProgress {
                 Text(progress)
                     .font(.callout)
                     .padding(8)
@@ -40,6 +40,22 @@ struct ContentView: View {
         }
         .toolbar {
             ToolbarItemGroup(placement: .automatic) {
+                Text(Updater.versionLabel)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .help("The installed version")
+
+                if let update = model.availableUpdate {
+                    Button {
+                        model.installUpdate()
+                    } label: {
+                        Label("Update to v\(update.version)", systemImage: "arrow.down.circle")
+                    }
+                    .labelStyle(.titleAndIcon)
+                    .help("Download version \(update.version), install it, and relaunch")
+                    .disabled(model.updateProgress != nil)
+                }
+
                 Button {
                     model.viewSystemPrompt()
                 } label: {
