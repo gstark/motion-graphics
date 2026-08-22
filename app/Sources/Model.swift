@@ -42,36 +42,49 @@ struct WorkStatus {
     var detail: String? = nil
 
     var stageDescription: String? {
-        stageKey.flatMap { stageDescriptions[$0] }
+        stageKey.flatMap { stageInfo[$0]?.description }
     }
 }
 
-// Friendly names for the pipeline's NDJSON stages.
-let stageLabels: [String: String] = [
-    "downloading": "Getting your video",
-    "importing": "Reading your video",
-    "audio": "Listening to the video",
-    "language-model-download": "Learning the language",
-    "transcribing": "Listening to the video",
-    "designing": "Designing your graphics",
-    "checking": "Checking the design",
-    "bundling": "Warming up",
-    "rendering": "Drawing the frames",
-    "stitching": "Putting it all together",
-    "browser-download": "Downloading components",
-]
+// The headline label and the plain-language sentence for one pipeline stage.
+struct StageInfo {
+    let label: String
+    let description: String
+}
 
-// A plain-language sentence describing what each stage is doing.
-let stageDescriptions: [String: String] = [
-    "downloading": "Fetching the video from the web.",
-    "importing": "Reading the video and getting it ready.",
-    "audio": "Pulling the audio out so it can be understood.",
-    "language-model-download": "Getting the speech model your Mac needs.",
-    "transcribing": "Writing down what is said, with the timing of each line.",
-    "designing": "Claude is designing graphics that match what is said.",
-    "checking": "Making sure the design will build correctly.",
-    "bundling": "Preparing the graphics for drawing.",
-    "rendering": "Drawing each frame of your graphics.",
-    "stitching": "Combining the graphics with your video.",
-    "browser-download": "Downloading a one-time component the first time you run.",
+// One entry per NDJSON stage the worker scripts emit.
+let stageInfo: [String: StageInfo] = [
+    "downloading": .init(
+        label: "Getting your video",
+        description: "Fetching the video from the web."),
+    "importing": .init(
+        label: "Reading your video",
+        description: "Reading the video and getting it ready."),
+    "audio": .init(
+        label: "Listening to the video",
+        description: "Pulling the audio out so it can be understood."),
+    "language-model-download": .init(
+        label: "Learning the language",
+        description: "Getting the speech model your Mac needs."),
+    "transcribing": .init(
+        label: "Listening to the video",
+        description: "Writing down what is said, with the timing of each line."),
+    "designing": .init(
+        label: "Designing your graphics",
+        description: "Claude is designing graphics that match what is said."),
+    "checking": .init(
+        label: "Checking the design",
+        description: "Making sure the design will build correctly."),
+    "bundling": .init(
+        label: "Warming up",
+        description: "Preparing the graphics for drawing."),
+    "rendering": .init(
+        label: "Drawing the frames",
+        description: "Drawing each frame of your graphics."),
+    "stitching": .init(
+        label: "Putting it all together",
+        description: "Combining the graphics with your video."),
+    "browser-download": .init(
+        label: "Downloading components",
+        description: "Downloading a one-time component the first time you run."),
 ]

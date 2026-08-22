@@ -43,6 +43,8 @@ export const jobPaths = (jobDir) => {
     entryPoint: path.join(project, 'src', 'index.ts'),
     metaFile: path.join(project, 'src', 'job', 'meta.json'),
     transcriptFile: path.join(project, 'src', 'job', 'transcript.json'),
+    // Readable copy at the job root, next to source.mp4, for inspection.
+    transcriptExport: path.join(jobDir, 'transcript.json'),
     outputDir: path.join(jobDir, 'output'),
   };
 };

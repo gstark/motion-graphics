@@ -21,7 +21,6 @@ final class AppModel: ObservableObject {
 
     // Revision request typed on the feedback screen.
     @Published var feedbackText = ""
-    private var pendingFeedback: String?
 
     // Detailed processing log for the Debug panel.
     let debug = DebugLog()
@@ -94,7 +93,7 @@ final class AppModel: ObservableObject {
         promptText = "Loading…"
         showPrompt = true
         Task {
-            let text = await captureText(
+            let result = await Sidecar.runProcess(
                 Config.node,
                 arguments: [
                     Config.workerDir.appendingPathComponent("generate.js").path,
@@ -104,45 +103,15 @@ final class AppModel: ObservableObject {
                 ],
                 cwd: Config.workerDir
             )
-            promptText = text.isEmpty ? "Could not build the prompt." : text
-        }
-    }
-
-    private func captureText(_ executable: URL, arguments: [String], cwd: URL) async -> String {
-        await withCheckedContinuation { continuation in
-            let process = Process()
-            process.executableURL = executable
-            process.arguments = arguments
-            process.currentDirectoryURL = cwd
-            let out = Pipe()
-            process.standardOutput = out
-            process.standardError = Pipe()
-            process.terminationHandler = { _ in
-                let data = out.fileHandleForReading.readDataToEndOfFile()
-                continuation.resume(returning: String(decoding: data, as: UTF8.self))
-            }
-            do { try process.run() } catch { continuation.resume(returning: "") }
+            promptText = result.stdout.isEmpty ? "Could not build the prompt." : result.stdout
         }
     }
 
     private func runLogin(_ claude: URL) async -> Bool {
-        await withCheckedContinuation { continuation in
-            let process = Process()
-            process.executableURL = claude
-            process.arguments = ["auth", "login", "--claudeai"]
-            process.environment = ProcessInfo.processInfo.environment
-            process.standardOutput = Pipe()
-            process.standardError = Pipe()
-            process.terminationHandler = { proc in
-                continuation.resume(returning: proc.terminationStatus == 0)
-            }
-            do {
-                try process.run()
-                loginProcess = process
-            } catch {
-                continuation.resume(returning: false)
-            }
+        let result = await Sidecar.runProcess(claude, arguments: ["auth", "login", "--claudeai"]) { [weak self] process in
+            Task { @MainActor in self?.loginProcess = process }
         }
+        return result.ok
     }
 
     func saveAPIKey() {
@@ -242,18 +211,7 @@ final class AppModel: ObservableObject {
     // MARK: - Pipeline
 
     func start() {
-        pendingFeedback = nil
-        screen = .working
-        status = WorkStatus(stageLabel: "Getting ready")
-        Task {
-            do {
-                let output = try await runPipeline()
-                screen = .done(output)
-            } catch {
-                debug.log(.error, "\(error)")
-                screen = .failed(friendlyMessage(for: error))
-            }
-        }
+        runFromInputs(feedback: nil)
     }
 
     // Runs another pass that revises the existing design from the user's
@@ -261,23 +219,28 @@ final class AppModel: ObservableObject {
     func applyFeedback() {
         let text = feedbackText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty else { return }
-        pendingFeedback = text
         feedbackText = ""
+        runFromInputs(feedback: text)
+    }
+
+    private func runFromInputs(feedback: String?) {
         screen = .working
         status = WorkStatus(stageLabel: "Getting ready")
         Task {
             do {
-                let output = try await runPipeline()
+                let output = try await runPipeline(feedback: feedback)
                 screen = .done(output)
             } catch {
                 debug.log(.error, "\(error)")
-                screen = .failed(friendlyMessage(for: error))
+                // Worker scripts own the user-facing wording of failures;
+                // show their message as-is.
+                screen = .failed(error.localizedDescription)
             }
         }
     }
 
     private func setStage(_ key: String, percent: Int? = nil, detail: String? = nil) {
-        status.stageLabel = stageLabels[key] ?? key
+        status.stageLabel = stageInfo[key]?.label ?? key
         status.stageKey = key
         status.percent = percent
         if let detail { status.detail = detail }
@@ -285,7 +248,7 @@ final class AppModel: ObservableObject {
 
     private func handle(_ event: SidecarEvent) {
         if let stage = event.stage {
-            status.stageLabel = stageLabels[stage] ?? stage
+            status.stageLabel = stageInfo[stage]?.label ?? stage
             status.stageKey = stage
         }
         if event.type != "log" {
@@ -301,7 +264,7 @@ final class AppModel: ObservableObject {
         }
     }
 
-    private func runPipeline() async throws -> URL {
+    private func runPipeline(feedback: String?) async throws -> URL {
         guard let authMode = ClaudeAuth.mode else {
             throw SidecarError.failed("Claude is not set up")
         }
@@ -385,14 +348,6 @@ final class AppModel: ObservableObject {
             ) { [weak self] in self?.handle($0) }
         }
 
-        // Save the transcript at the project root as a readable asset, next to
-        // source.mp4, so it can be inspected and evaluated later.
-        let rootTranscript = project.folder.appendingPathComponent("transcript.json")
-        if FileManager.default.fileExists(atPath: project.transcriptFile.path) {
-            try? FileManager.default.removeItem(at: rootTranscript)
-            try? FileManager.default.copyItem(at: project.transcriptFile, to: rootTranscript)
-        }
-
         // 5. Design the graphics. Subscription login when we have it.
         setStage("designing")
         var generateEnv: [String: String] = [:]
@@ -405,14 +360,13 @@ final class AppModel: ObservableObject {
             worker.appendingPathComponent("generate.js").path,
             "--job", jobDir.path, "--direction", direction, "--auth", authArg,
         ]
-        if let feedback = pendingFeedback {
+        if let feedback {
             generateArgs.append(contentsOf: ["--feedback", feedback])
         }
         try await Sidecar.run(
             Config.node, arguments: generateArgs,
             environment: generateEnv, cwd: worker, debug: debug
         ) { [weak self] in self?.handle($0) }
-        pendingFeedback = nil
 
         // 6. Render.
         setStage("rendering")
@@ -430,32 +384,11 @@ final class AppModel: ObservableObject {
 
     private func runPlain(_ executable: URL, _ arguments: [String]) async throws {
         debug.log(.command, "\(executable.path) \(arguments.joined(separator: " "))")
-        let process = Process()
-        process.executableURL = executable
-        process.arguments = arguments
-        let errPipe = Pipe()
-        process.standardError = errPipe
-        process.standardOutput = Pipe()
-        try process.run()
-        await withCheckedContinuation { continuation in
-            process.terminationHandler = { _ in continuation.resume() }
+        let result = await Sidecar.runProcess(executable, arguments: arguments)
+        if !result.ok {
+            let tail = String(result.stderr.suffix(500))
+            debug.log(.error, tail)
+            throw SidecarError.failed(tail)
         }
-        if process.terminationStatus != 0 {
-            let data = errPipe.fileHandleForReading.readDataToEndOfFile()
-            let tail = String(decoding: data, as: UTF8.self).suffix(500)
-            debug.log(.error, String(tail))
-            throw SidecarError.failed(String(tail))
-        }
-    }
-
-    private func friendlyMessage(for error: Error) -> String {
-        let raw = (error as? SidecarError).map { $0.localizedDescription } ?? error.localizedDescription
-        if raw.contains("api_key") || raw.contains("authentication") || raw.contains("401") {
-            return "Claude did not accept the API key. Check the key in Settings and try again."
-        }
-        if raw.lowercased().contains("download failed") {
-            return "The video could not be downloaded. Check the link and try again."
-        }
-        return raw
     }
 }

@@ -52,13 +52,16 @@ child.stderr.on('data', (chunk) => {
 
 child.on('close', (code) => {
   if (code !== 0) {
-    emit({type: 'error', message: `download failed: ${stderrTail.trim().split('\n').pop() || 'unknown error'}`});
+    // This message is shown to the user as-is; keep it friendly, with the
+    // technical cause in parentheses for the curious.
+    const cause = stderrTail.trim().split('\n').pop() || 'unknown error';
+    emit({type: 'error', message: `The video could not be downloaded. Check the link and try again. (${cause})`});
     process.exit(1);
   }
   // Match only the merged output, never intermediate source.fNNN.* files.
   const file = fs.readdirSync(outDir).find((f) => /^source\.(mp4|webm|mkv|mov|m4v)$/i.test(f));
   if (!file) {
-    emit({type: 'error', message: 'download finished but no file was produced'});
+    emit({type: 'error', message: 'The download finished but produced no video file. Try a different link.'});
     process.exit(1);
   }
   const subtitles = fs.readdirSync(outDir).find((f) => f.endsWith('.vtt'));

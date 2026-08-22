@@ -24,19 +24,6 @@ if (!jobDir) fail('usage: generate.js --job <dir> --direction <text> [--feedback
 // exits without running the agent. Used by the app's prompt viewer.
 const printPrompt = process.argv.includes('--print-prompt')
 
-// Auth: "subscription" uses the claude.ai login Claude Code stored; "apikey"
-// uses ANTHROPIC_API_KEY. Default follows whether a key is present.
-if (!printPrompt) {
-  const authMode = arg('auth') ?? (process.env.ANTHROPIC_API_KEY ? 'apikey' : 'subscription')
-  if (authMode === 'subscription') {
-    // A stray ANTHROPIC_API_KEY would override the subscription login, so
-    // clear it. The SDK then falls back to the stored OAuth token.
-    delete process.env.ANTHROPIC_API_KEY
-  } else if (!process.env.ANTHROPIC_API_KEY) {
-    fail('ANTHROPIC_API_KEY is not set')
-  }
-}
-
 const paths = jobPaths(jobDir)
 // In print mode the job may not be prepared yet (no meta/transcript), so fall
 // back to placeholders instead of failing.
@@ -163,6 +150,23 @@ ${direction || '(none given — design tasteful graphics that support the spoken
 if (printPrompt) {
   process.stdout.write(`=== SYSTEM PROMPT ===\n${systemPrompt}\n\n=== FIRST USER MESSAGE ===\n${prompt}\n`)
   process.exit(0)
+}
+
+// Auth: "subscription" uses the claude.ai login Claude Code stored; "apikey"
+// uses ANTHROPIC_API_KEY. Default follows whether a key is present.
+const authMode = arg('auth') ?? (process.env.ANTHROPIC_API_KEY ? 'apikey' : 'subscription')
+if (authMode === 'subscription') {
+  // A stray ANTHROPIC_API_KEY would override the subscription login, so
+  // clear it. The SDK then falls back to the stored OAuth token.
+  delete process.env.ANTHROPIC_API_KEY
+} else if (!process.env.ANTHROPIC_API_KEY) {
+  fail('ANTHROPIC_API_KEY is not set')
+}
+
+// The transcript's canonical home is src/job/transcript.json, written by
+// the transcribe step. Mirror it at the job root as a readable asset.
+if (fs.existsSync(paths.transcriptFile)) {
+  fs.copyFileSync(paths.transcriptFile, paths.transcriptExport)
 }
 
 for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {

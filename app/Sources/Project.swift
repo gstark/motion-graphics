@@ -26,16 +26,19 @@ struct Project: Identifiable {
     var outputDir: URL { folder.appendingPathComponent("output") }
     var downloadDir: URL { folder.appendingPathComponent("download") }
 
+    // The canonical record is meta.json's sourceFileName, written by
+    // create-job.js. The directory scan covers jobs the worker has not
+    // prepared yet.
     var sourceFile: URL? {
-        let re = try? NSRegularExpression(pattern: "^source\\.(mp4|mov|webm|mkv|m4v)$", options: .caseInsensitive)
-        guard let names = try? FileManager.default.contentsOfDirectory(atPath: folder.path) else { return nil }
-        for name in names {
-            let range = NSRange(name.startIndex..., in: name)
-            if re?.firstMatch(in: name, range: range) != nil {
-                return folder.appendingPathComponent(name)
-            }
+        if let data = try? Data(contentsOf: metaFile),
+           let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+           let name = json["sourceFileName"] as? String {
+            let url = folder.appendingPathComponent(name)
+            if FileManager.default.fileExists(atPath: url.path) { return url }
         }
-        return nil
+        guard let names = try? FileManager.default.contentsOfDirectory(atPath: folder.path) else { return nil }
+        return names.first { $0.lowercased().hasPrefix("source.") }
+            .map { folder.appendingPathComponent($0) }
     }
 
     var hasSource: Bool { sourceFile != nil }
