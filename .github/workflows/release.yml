@@ -23,16 +23,16 @@ jobs:
     runs-on: macos-26
     timeout-minutes: 90
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Select Xcode 26
         run: sudo xcode-select -s "$(ls -d /Applications/Xcode_26*.app | sort -V | tail -1)"
 
       - name: Install tuist (mise)
-        uses: jdx/mise-action@v2
+        uses: jdx/mise-action@v4
 
       - name: Cache downloaded runtimes
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: .runtime-cache
           key: runtimes-${{ runner.os }}-${{ hashFiles('scripts/bundle-runtimes.sh') }}
@@ -82,13 +82,13 @@ jobs:
 
       - name: Publish release (tag builds)
         if: startsWith(github.ref, 'refs/tags/v')
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           files: dist/MotionGraphics.zip
 
       - name: Upload artifact (manual runs)
         if: github.event_name == 'workflow_dispatch'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: MotionGraphics
           path: dist/MotionGraphics.zip
