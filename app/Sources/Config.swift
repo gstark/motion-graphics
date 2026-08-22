@@ -11,7 +11,7 @@ enum Config {
     }()
 
     // Development checkout, used when the app runs without bundled resources.
-    static let devRoot = URL(fileURLWithPath: "/Users/gstark/dev/personal/motion-graphics")
+    static let devRoot = URL(fileURLWithPath: NSHomeDirectory() + "/dev/personal/motion-graphics")
 
     static var bundledBin: URL? {
         guard let res = Bundle.main.resourceURL else { return nil }
