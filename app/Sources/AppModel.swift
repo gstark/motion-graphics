@@ -45,10 +45,44 @@ final class AppModel: ObservableObject {
         }
         refreshProjects()
         Task { await prepareWorkerQuietly() }
-        Task { availableUpdate = await Updater.check() }
+        watchForUpdates()
     }
 
     // MARK: - Self-update
+
+    // GitHub gets polled at launch and then every half hour, so a release
+    // published while the app is open still gets noticed.
+    private static let updateCheckInterval: Duration = .seconds(30 * 60)
+    private var promptedVersion: String?
+
+    private func watchForUpdates() {
+        Task { [weak self] in
+            while !Task.isCancelled {
+                guard let self else { return }
+                if let update = await Updater.check(log: { [weak self] in self?.debug.log(.info, $0) }) {
+                    self.availableUpdate = update
+                    self.promptForUpdate(update)
+                }
+                try? await Task.sleep(for: Self.updateCheckInterval)
+            }
+        }
+    }
+
+    // Ask once per version per run. The toolbar button stays for anyone who
+    // picks Later.
+    private func promptForUpdate(_ update: Updater.AvailableUpdate) {
+        guard promptedVersion != update.version, updateProgress == nil else { return }
+        promptedVersion = update.version
+
+        let alert = NSAlert()
+        alert.messageText = "Version \(update.version) is available"
+        alert.informativeText = "You are running \(Updater.currentVersion). The update downloads in the background, then the app restarts."
+        alert.addButton(withTitle: "Update Now")
+        alert.addButton(withTitle: "Later")
+        alert.alertStyle = .informational
+        guard alert.runModal() == .alertFirstButtonReturn else { return }
+        installUpdate()
+    }
 
     func installUpdate() {
         guard let update = availableUpdate, updateProgress == nil else { return }

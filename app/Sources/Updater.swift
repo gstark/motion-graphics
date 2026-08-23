@@ -24,20 +24,46 @@ enum Updater {
     // MARK: - Check
 
     // Nil when up to date, offline, or running a dev or translocated build.
-    static func check() async -> AvailableUpdate? {
-        guard currentVersion != "0.0.0",
-              !Bundle.main.bundlePath.contains("/AppTranslocation/") else { return nil }
+    // Anything unexpected goes to `log` so the Debug panel can show why a
+    // check found nothing.
+    static func check(log: ((String) -> Void)? = nil) async -> AvailableUpdate? {
+        guard currentVersion != "0.0.0" else {
+            log?("update check skipped: unstamped dev build")
+            return nil
+        }
+        guard !Bundle.main.bundlePath.contains("/AppTranslocation/") else {
+            log?("update check skipped: the app is running from a translocated path")
+            return nil
+        }
 
         var request = URLRequest(url: URL(string: "https://api.github.com/repos/\(repo)/releases/latest")!)
         request.setValue("application/vnd.github+json", forHTTPHeaderField: "Accept")
-        guard let (data, _) = try? await URLSession.shared.data(for: request),
-              let release = try? JSONDecoder().decode(Release.self, from: data)
-        else { return nil }
+        // GitHub marks this response cacheable. A repeating check must see the
+        // new release, not the copy URLSession kept.
+        request.cachePolicy = .reloadIgnoringLocalCacheData
+
+        let release: Release
+        do {
+            let (data, response) = try await URLSession.shared.data(for: request)
+            if let http = response as? HTTPURLResponse, http.statusCode != 200 {
+                log?("update check failed: GitHub returned HTTP \(http.statusCode)")
+                return nil
+            }
+            release = try JSONDecoder().decode(Release.self, from: data)
+        } catch {
+            log?("update check failed: \(error.localizedDescription)")
+            return nil
+        }
 
         let latest = release.tagName.hasPrefix("v") ? String(release.tagName.dropFirst()) : release.tagName
-        guard isNewer(latest, than: currentVersion),
-              let asset = release.assets.first(where: { $0.name == "MotionGraphics.zip" })
-        else { return nil }
+        guard isNewer(latest, than: currentVersion) else {
+            log?("update check: \(latest) is the newest release; running \(currentVersion)")
+            return nil
+        }
+        guard let asset = release.assets.first(where: { $0.name == "MotionGraphics.zip" }) else {
+            log?("update check: release \(latest) has no MotionGraphics.zip yet")
+            return nil
+        }
         return AvailableUpdate(version: latest, assetURL: asset.url)
     }
 
