@@ -6,6 +6,10 @@ import fs from 'node:fs';
 import path from 'node:path';
 import {arg, emit, fail} from './lib.js';
 
+// Anything the Debug panel should show. yt-dlp writes its real diagnosis to
+// stderr, which never reached the app before.
+const logLine = (text) => emit({type: 'log', tool: 'yt-dlp', text});
+
 const ytdlpPath = process.env.YTDLP_PATH || 'yt-dlp';
 const MAX_ATTEMPTS = 10;
 
@@ -20,11 +24,15 @@ const cookieArgs = ['--cookies-from-browser', 'chrome'];
 
 const runYtdlp = (withCookies) =>
   new Promise((resolve) => {
-    const child = spawn(ytdlpPath, [
+    const args = [
       '--newline',
       '--no-playlist',
       '--retries', '10',
       '--fragment-retries', '10',
+      // YouTube's n challenge needs a JavaScript runtime. The app's PATH is
+      // the bare launchd one, so deno is not found even when it is installed.
+      // Point yt-dlp at the node we are already running on.
+      '--js-runtimes', `node:${process.execPath}`,
       ...(withCookies ? cookieArgs : []),
       '-f', 'bv*[height<=1080]+ba/b[height<=1080]/b',
       '--merge-output-format', 'mp4',
@@ -37,7 +45,10 @@ const runYtdlp = (withCookies) =>
       ...(process.env.FFMPEG_PATH ? ['--ffmpeg-location', process.env.FFMPEG_PATH] : []),
       '-o', path.join(outDir, 'source.%(ext)s'),
       url,
-    ]);
+    ];
+    logLine(`${ytdlpPath} ${args.join(' ')}`);
+
+    const child = spawn(ytdlpPath, args);
 
     let stderrTail = '';
     let lastPercent = -1;
@@ -51,15 +62,29 @@ const runYtdlp = (withCookies) =>
             lastPercent = percent;
             emit({type: 'progress', stage: 'downloading', percent});
           }
+          continue;
         }
+        // Everything else on stdout is yt-dlp narrating what it picked:
+        // the extractor, the format, the merge. Keep it for the log.
+        if (line.trim()) logLine(line.trim());
       }
     });
     child.stderr.on('data', (chunk) => {
-      stderrTail = (stderrTail + chunk.toString()).slice(-4000);
+      const text = chunk.toString();
+      stderrTail = (stderrTail + text).slice(-4000);
+      for (const line of text.split('\n')) {
+        if (line.trim()) logLine(line.trim());
+      }
     });
 
-    child.on('error', (error) => resolve({ok: false, stderr: error.message}));
-    child.on('close', (code) => resolve({ok: code === 0, stderr: stderrTail}));
+    child.on('error', (error) => {
+      logLine(`yt-dlp could not start: ${error.message}`);
+      resolve({ok: false, stderr: error.message});
+    });
+    child.on('close', (code) => {
+      logLine(`yt-dlp exited with code ${code}`);
+      resolve({ok: code === 0, stderr: stderrTail});
+    });
   });
 
 // Reading Chrome's cookie jar fails on its own terms: no Chrome installed,
@@ -73,6 +98,11 @@ const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 const mergedVideo = () =>
   fs.readdirSync(outDir).find((f) => /^source\.(mp4|webm|mkv|mov|m4v)$/i.test(f));
 
+logLine(`yt-dlp binary: ${ytdlpPath}`);
+logLine(`node: ${process.execPath}`);
+logLine(`HOME=${process.env.HOME || '(unset)'}`);
+logLine(`PATH=${process.env.PATH || '(unset)'}`);
+
 let useCookies = true;
 let lastStderr = '';
 
@@ -83,6 +113,7 @@ for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
     await sleep(Math.min(2000 * attempt, 10000));
   }
 
+  logLine(`attempt ${attempt} of ${MAX_ATTEMPTS}, cookies ${useCookies ? 'on' : 'off'}`);
   const result = await runYtdlp(useCookies);
   lastStderr = result.stderr;
 
@@ -101,7 +132,10 @@ for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
   }
 
   if (attempt === MAX_ATTEMPTS) {
-    const cause = lastStderr.trim().split('\n').pop() || 'no details from yt-dlp';
+    // The last line is the summary; the ones above it usually say why.
+    const tail = lastStderr.trim().split('\n').filter((l) => l.trim());
+    logLine(`giving up after ${MAX_ATTEMPTS} attempts`);
+    const cause = tail[tail.length - 1] || 'no details from yt-dlp';
     emit({
       type: 'error',
       message: `We could not download the video from that link. We tried ${MAX_ATTEMPTS} times. The video may be private, region locked, or removed. Sign in to the site in Chrome and try again, or download the file yourself and open it from your computer. (${cause})`,
